@@ -1,6 +1,6 @@
 services:
   backend:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
@@ -12,11 +12,11 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: "3306"
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
 
   configurator:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
@@ -45,7 +45,7 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   create-site:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
@@ -63,8 +63,8 @@ services:
         wait-for-it -t 120 redis-cache:6379;
         wait-for-it -t 120 redis-queue:6379;
         export start=`date +%s`;
-        until [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty"` ]] && \
-          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty"` ]] && \
+        until [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty"` ]] &&
+          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty"` ]] &&
           [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_queue // empty"` ]];
         do
           echo "Waiting for sites/common_site_config.json to be created";
@@ -75,14 +75,14 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default frontend;
+        bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD:-admin} --db-root-username=root --db-root-password=${DB_PASSWORD:-admin} --install-app erpnext --set-default frontend;
 
   db:
     image: mariadb:10.6
     networks:
       - frappe_network
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
+      test: mysqladmin ping -h localhost --password=${DB_PASSWORD:-admin}
       interval: 1s
       retries: 20
     deploy:
@@ -92,15 +92,15 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
+      - --skip-innodb-read-only-compressed
     environment:
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
     volumes:
       - db-data:/var/lib/mysql
 
   frontend:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     depends_on:
@@ -123,10 +123,10 @@ services:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
     ports:
-      - "8088:8080"
+      - "${ERPNEXT_PORT:-8080}:8080"
 
   queue-long:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
@@ -145,7 +145,7 @@ services:
       FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
 
   queue-short:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
@@ -182,7 +182,7 @@ services:
         condition: on-failure
 
   scheduler:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
@@ -196,7 +196,7 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   websocket:
-    image: frappe/erpnext:v16.8.3
+    image: frappe/erpnext:${ERPNEXT_VERSION:-v16.8.3}
     networks:
       - frappe_network
     deploy:
