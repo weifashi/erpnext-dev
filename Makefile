@@ -53,7 +53,8 @@ help: ## 显示帮助信息
 	@echo "参数示例:"
 	@echo "  make install PORT=9090 PASSWORD=mypass123"
 	@echo "  make add-site SITE=erp2.example.com"
-	@echo "  make restore FILE=backups/xxx-database.sql.gz"
+	@echo "  make backup SITE=erp2.example.com"
+	@echo "  make restore SITE=erp2.example.com FILE=backups/xxx.sql.gz"
 	@echo ""
 
 # ============================================================
@@ -440,30 +441,57 @@ uninstall: ## 卸载并清理所有数据
 	echo -e "$(GREEN)ERPNext 已完全卸载$(NC)"
 
 # ============================================================
-backup: ## 备份站点 (数据库 + 文件)
+backup: ## 备份站点 (make backup [SITE=站点名])
 	@if [ ! -f "$(ENV_FILE)" ]; then
 		echo -e "$(RED)[ERROR]$(NC) 未找到 .env 文件，请先运行 make install" >&2
 		exit 1
 	fi
 	mkdir -p "$(BACKUP_DIR)"
 
-	echo -e "$(GREEN)[INFO]$(NC)  正在备份 ERPNext 站点..." >&2
-	$(compose) exec -T backend bench --site $(SITE_NAME) backup --with-files
+	# 选择站点
+	site="$(SITE)"
+	if [ -z "$$site" ]; then
+		sites=$$($(compose) exec -T backend bash -c 'ls -d sites/*/site_config.json 2>/dev/null | sed "s|sites/||;s|/site_config.json||"' | tr -d '\r')
+		site_count=$$(echo "$$sites" | wc -w)
+		if [ "$$site_count" -eq 1 ]; then
+			site="$$sites"
+		elif [ "$$site_count" -gt 1 ]; then
+			echo -e "$(CYAN)可用站点:$(NC)"
+			i=1
+			declare -a site_list=()
+			for s in $$sites; do
+				site_list+=("$$s")
+				echo "  $$i) $$s"
+				i=$$((i+1))
+			done
+			echo ""
+			read -rp "选择站点序号 [1]: " choice
+			choice="$${choice:-1}"
+			site="$${site_list[$$((choice-1))]}"
+		else
+			site="$(SITE_NAME)"
+		fi
+	fi
+
+	backup_path="/home/frappe/frappe-bench/sites/$$site/private/backups"
+	container="$(PROJECT)-backend-1"
+
+	echo -e "$(GREEN)[INFO]$(NC)  正在备份站点 $$site ..." >&2
+	$(compose) exec -T backend bench --site "$$site" backup --with-files
 
 	# 获取最新备份文件名
-	latest_db=$$($(compose) exec -T backend ls -t "$(CONTAINER_SITE)" | grep '\.sql\.gz$$' | head -1 | tr -d '\r')
+	latest_db=$$($(compose) exec -T backend ls -t "$$backup_path" | grep '\.sql\.gz$$' | head -1 | tr -d '\r')
 	if [ -z "$$latest_db" ]; then
 		echo -e "$(RED)[ERROR]$(NC) 未找到备份文件" >&2
 		exit 1
 	fi
 
-	prefix="$${latest_db%-$(SITE_NAME)-database.sql.gz}"
-	container="$(PROJECT)-backend-1"
+	prefix="$${latest_db%-$$site-database.sql.gz}"
 
-	docker cp "$$container:$(CONTAINER_SITE)/$${prefix}-$(SITE_NAME)-database.sql.gz" "$(BACKUP_DIR)/"
-	docker cp "$$container:$(CONTAINER_SITE)/$${prefix}-$(SITE_NAME)-files.tar" "$(BACKUP_DIR)/" 2>/dev/null || true
-	docker cp "$$container:$(CONTAINER_SITE)/$${prefix}-$(SITE_NAME)-private-files.tar" "$(BACKUP_DIR)/" 2>/dev/null || true
-	docker cp "$$container:$(CONTAINER_SITE)/$${prefix}-$(SITE_NAME)-site_config_backup.json" "$(BACKUP_DIR)/" 2>/dev/null || true
+	docker cp "$$container:$$backup_path/$${prefix}-$$site-database.sql.gz" "$(BACKUP_DIR)/"
+	docker cp "$$container:$$backup_path/$${prefix}-$$site-files.tar" "$(BACKUP_DIR)/" 2>/dev/null || true
+	docker cp "$$container:$$backup_path/$${prefix}-$$site-private-files.tar" "$(BACKUP_DIR)/" 2>/dev/null || true
+	docker cp "$$container:$$backup_path/$${prefix}-$$site-site_config_backup.json" "$(BACKUP_DIR)/" 2>/dev/null || true
 
 	echo ""
 	echo -e "$(GREEN)[INFO]$(NC)  备份完成! 文件保存在: $(BACKUP_DIR)/" >&2
@@ -471,11 +499,39 @@ backup: ## 备份站点 (数据库 + 文件)
 	echo ""
 
 # ============================================================
-restore: ## 恢复备份 (make restore FILE=backups/xxx.sql.gz)
+restore: ## 恢复备份 (make restore [SITE=站点名] [FILE=backups/xxx.sql.gz])
 	@if [ ! -f "$(ENV_FILE)" ]; then
 		echo -e "$(RED)[ERROR]$(NC) 未找到 .env 文件，请先运行 make install" >&2
 		exit 1
 	fi
+
+	# 选择站点
+	site="$(SITE)"
+	if [ -z "$$site" ]; then
+		sites=$$($(compose) exec -T backend bash -c 'ls -d sites/*/site_config.json 2>/dev/null | sed "s|sites/||;s|/site_config.json||"' | tr -d '\r')
+		site_count=$$(echo "$$sites" | wc -w)
+		if [ "$$site_count" -eq 1 ]; then
+			site="$$sites"
+		elif [ "$$site_count" -gt 1 ]; then
+			echo -e "$(CYAN)选择要恢复的站点:$(NC)"
+			i=1
+			declare -a site_list=()
+			for s in $$sites; do
+				site_list+=("$$s")
+				echo "  $$i) $$s"
+				i=$$((i+1))
+			done
+			echo ""
+			read -rp "选择站点序号 [1]: " choice
+			choice="$${choice:-1}"
+			site="$${site_list[$$((choice-1))]}"
+		else
+			site="$(SITE_NAME)"
+		fi
+	fi
+
+	backup_path="/home/frappe/frappe-bench/sites/$$site/private/backups"
+	container="$(PROJECT)-backend-1"
 
 	backup_file="$(FILE)"
 
@@ -509,13 +565,18 @@ restore: ## 恢复备份 (make restore FILE=backups/xxx.sql.gz)
 		exit 1
 	fi
 
+	# 从文件名提取站点名（备份文件格式: prefix-站点名-database.sql.gz）
 	bdir="$$(dirname "$$backup_file")"
 	bname="$$(basename "$$backup_file")"
-	prefix="$${bname%-$(SITE_NAME)-database.sql.gz}"
-	files_tar="$$bdir/$${prefix}-$(SITE_NAME)-files.tar"
-	private_tar="$$bdir/$${prefix}-$(SITE_NAME)-private-files.tar"
+	# 提取前缀: 去掉 -database.sql.gz，再去掉最后一个 - 前的站点名
+	noext="$${bname%-database.sql.gz}"
+	backup_site="$${noext##*-}"
+	prefix="$${noext%-$$backup_site}"
+	files_tar="$$bdir/$${prefix}-$${backup_site}-files.tar"
+	private_tar="$$bdir/$${prefix}-$${backup_site}-private-files.tar"
 
 	echo -e "$(YELLOW)即将恢复备份:$(NC)"
+	echo "  目标站点: $$site"
 	echo "  数据库:   $$bname"
 	[ -f "$$files_tar" ] && echo "  公共文件: $$(basename "$$files_tar")"
 	[ -f "$$private_tar" ] && echo "  私有文件: $$(basename "$$private_tar")"
@@ -526,34 +587,32 @@ restore: ## 恢复备份 (make restore FILE=backups/xxx.sql.gz)
 		exit 0
 	fi
 
-	container="$(PROJECT)-backend-1"
-
 	echo -e "$(GREEN)[INFO]$(NC)  正在复制备份文件到容器..." >&2
-	$(compose) exec -T backend mkdir -p "$(CONTAINER_SITE)"
-	docker cp "$$backup_file" "$$container:$(CONTAINER_SITE)/"
-	[ -f "$$files_tar" ] && docker cp "$$files_tar" "$$container:$(CONTAINER_SITE)/"
-	[ -f "$$private_tar" ] && docker cp "$$private_tar" "$$container:$(CONTAINER_SITE)/"
+	$(compose) exec -T backend mkdir -p "$$backup_path"
+	docker cp "$$backup_file" "$$container:$$backup_path/"
+	[ -f "$$files_tar" ] && docker cp "$$files_tar" "$$container:$$backup_path/"
+	[ -f "$$private_tar" ] && docker cp "$$private_tar" "$$container:$$backup_path/"
 
 	# 读取数据库密码
 	set -a; source "$(ENV_FILE)"; set +a
 	db_pw="$${DB_PASSWORD:-admin}"
 
 	# 构建恢复命令
-	restore_cmd="bench --site $(SITE_NAME) restore --db-root-username root --db-root-password $$db_pw $(CONTAINER_SITE)/$$bname"
-	[ -f "$$files_tar" ] && restore_cmd="$$restore_cmd --with-public-files $(CONTAINER_SITE)/$$(basename "$$files_tar")"
-	[ -f "$$private_tar" ] && restore_cmd="$$restore_cmd --with-private-files $(CONTAINER_SITE)/$$(basename "$$private_tar")"
+	restore_cmd="bench --site $$site restore --db-root-username root --db-root-password $$db_pw $$backup_path/$$bname"
+	[ -f "$$files_tar" ] && restore_cmd="$$restore_cmd --with-public-files $$backup_path/$$(basename "$$files_tar")"
+	[ -f "$$private_tar" ] && restore_cmd="$$restore_cmd --with-private-files $$backup_path/$$(basename "$$private_tar")"
 
 	echo -e "$(GREEN)[INFO]$(NC)  正在恢复数据库..." >&2
 	$(compose) exec -T backend $$restore_cmd
 
 	echo -e "$(GREEN)[INFO]$(NC)  正在执行数据库迁移..." >&2
-	$(compose) exec -T backend bench --site $(SITE_NAME) migrate
+	$(compose) exec -T backend bench --site "$$site" migrate
 
 	echo -e "$(GREEN)[INFO]$(NC)  正在清除缓存..." >&2
-	$(compose) exec -T backend bench --site $(SITE_NAME) clear-cache
+	$(compose) exec -T backend bench --site "$$site" clear-cache
 
 	echo ""
-	echo -e "$(GREEN)[INFO]$(NC)  备份恢复完成!" >&2
+	echo -e "$(GREEN)[INFO]$(NC)  站点 $$site 备份恢复完成!" >&2
 
 # ============================================================
 up: ## 启动所有服务
