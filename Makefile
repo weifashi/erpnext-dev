@@ -720,12 +720,30 @@ _generate-env:
 MCP_PORT ?= 8100
 
 mcp-install: ## 安装 MCP Server 依赖
+	# 确保 python3 和 pip3 可用
+	if ! command -v python3 &>/dev/null; then
+		echo -e "$(YELLOW)[WARN]$(NC)  python3 未找到，正在安装..." >&2
+		if command -v apt-get &>/dev/null; then
+			sudo apt-get update -qq && sudo apt-get install -y -qq python3 python3-pip python3-venv >/dev/null 2>&1
+		elif command -v yum &>/dev/null; then
+			sudo yum install -y -q python3 python3-pip >/dev/null 2>&1
+		else
+			echo -e "$(RED)[ERROR]$(NC) 无法自动安装 python3，请手动安装" >&2
+			exit 1
+		fi
+	fi
+	if ! command -v pip3 &>/dev/null; then
+		echo -e "$(YELLOW)[WARN]$(NC)  pip3 未找到，正在安装..." >&2
+		if command -v apt-get &>/dev/null; then
+			sudo apt-get install -y -qq python3-pip >/dev/null 2>&1
+		fi
+	fi
 	pip3 install --break-system-packages -q "mcp[cli]" httpx 2>/dev/null || \
 	pip3 install -q "mcp[cli]" httpx
 	echo -e "$(GREEN)[INFO]$(NC)  MCP 依赖安装完成"
 
 mcp: ## 启动 MCP Server (SSE 模式, 端口 8100)
-	@if ! python3 -c "import mcp" 2>/dev/null; then \
+	@if ! command -v python3 &>/dev/null || ! python3 -c "import mcp" 2>/dev/null; then \
 		echo -e "$(YELLOW)[WARN]$(NC)  MCP 依赖未安装，正在安装..." >&2; \
 		$(MAKE) mcp-install; \
 	fi
