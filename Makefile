@@ -417,8 +417,12 @@ restore: ## 恢复备份 (make restore FILE=backups/xxx.sql.gz)
 	[ -f "$$files_tar" ] && docker cp "$$files_tar" "$$container:$(CONTAINER_SITE)/"
 	[ -f "$$private_tar" ] && docker cp "$$private_tar" "$$container:$(CONTAINER_SITE)/"
 
+	# 读取数据库密码
+	set -a; source "$(ENV_FILE)"; set +a
+	db_pw="$${DB_PASSWORD:-admin}"
+
 	# 构建恢复命令
-	restore_cmd="bench --site $(SITE_NAME) restore $(CONTAINER_SITE)/$$bname"
+	restore_cmd="bench --site $(SITE_NAME) restore --db-root-username root --db-root-password $$db_pw $(CONTAINER_SITE)/$$bname"
 	[ -f "$$files_tar" ] && restore_cmd="$$restore_cmd --with-public-files $(CONTAINER_SITE)/$$(basename "$$files_tar")"
 	[ -f "$$private_tar" ] && restore_cmd="$$restore_cmd --with-private-files $(CONTAINER_SITE)/$$(basename "$$private_tar")"
 
