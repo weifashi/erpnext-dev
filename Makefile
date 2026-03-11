@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -euo pipefail -c
-.PHONY: build rebuild install create-site update uninstall backup restore up down status logs clean-cache help
+.PHONY: build rebuild install create-site add-site update uninstall backup restore up down status logs clean-cache help
 
 # ============================================================
 #  ERPNext Docker Compose 一键部署
@@ -19,6 +19,7 @@ IMAGE_TAG        ?= v15.70.0
 PROJECT          ?= erpnext
 FILE             ?=
 NO_CACHE         ?=
+SITE             ?=
 
 # ---------- 内部变量 ----------
 COMPOSE_FILE    := docker-compose.yml
@@ -51,6 +52,7 @@ help: ## 显示帮助信息
 	@echo ""
 	@echo "参数示例:"
 	@echo "  make install PORT=9090 PASSWORD=mypass123"
+	@echo "  make add-site SITE=erp2.example.com"
 	@echo "  make restore FILE=backups/xxx-database.sql.gz"
 	@echo ""
 
@@ -336,6 +338,47 @@ create-site: ## 重新创建站点 (删除旧站点数据，重新初始化)
 	echo -e "  访问地址:  $(GREEN)http://$${host_ip}:$${port}$(NC)"
 	echo -e "  用户名:    $(GREEN)Administrator$(NC)"
 	echo -e "  密码:      $(GREEN)$${admin_pw}$(NC)"
+	echo ""
+
+# ============================================================
+add-site: ## 添加新站点 (make add-site SITE=erp.example.com)
+	@if [ ! -f "$(ENV_FILE)" ]; then
+		echo -e "$(RED)[ERROR]$(NC) 未找到 .env 文件，请先运行 make install" >&2
+		exit 1
+	fi
+	site_name="$(SITE)"
+	if [ -z "$$site_name" ]; then
+		echo -e "$(RED)[ERROR]$(NC) 请指定站点名称: make add-site SITE=erp.example.com" >&2
+		exit 1
+	fi
+	set -a; source "$(ENV_FILE)"; set +a
+	admin_pw="$${ADMIN_PASSWORD:-admin}"
+	db_pw="$${DB_PASSWORD:-admin}"
+
+	echo -e "$(GREEN)[INFO]$(NC)  正在创建新站点: $$site_name ..." >&2
+
+	# 安装 setuptools 并创建站点
+	$(compose) exec -T backend bash -c \
+		'/home/frappe/frappe-bench/env/bin/pip install "setuptools<81" -q && \
+		bench new-site --mariadb-user-host-login-scope="%" \
+			--admin-password='"$$admin_pw"' \
+			--db-root-username=root \
+			--db-root-password='"$$db_pw"' \
+			--install-app erpnext \
+			--install-app hrms \
+			'"$$site_name"''
+
+	host_ip=$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo "localhost")
+	port="$${ERPNEXT_PORT:-8080}"
+	echo ""
+	echo -e "$(GREEN)[INFO]$(NC)  站点 $$site_name 创建成功!" >&2
+	echo ""
+	echo -e "  $(CYAN)多站点访问方式:$(NC)"
+	echo -e "  请将域名 $(GREEN)$$site_name$(NC) 解析到服务器 $(GREEN)$$host_ip$(NC)"
+	echo -e "  然后通过 $(GREEN)http://$$site_name:$$port$(NC) 访问"
+	echo ""
+	echo -e "  $(CYAN)已有站点列表:$(NC)"
+	$(compose) exec -T backend bench --site all list-apps 2>/dev/null || true
 	echo ""
 
 # ============================================================
