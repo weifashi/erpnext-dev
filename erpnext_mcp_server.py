@@ -21,11 +21,12 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-COMPOSE_PROJECT = "erpnext"
+PROJECT_DIR = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.abspath(__file__)))
+COMPOSE_PROJECT = os.environ.get("COMPOSE_PROJECT", "erpnext")
 COMPOSE_FILE = os.path.join(PROJECT_DIR, "docker-compose.yml")
 ENV_FILE = os.path.join(PROJECT_DIR, ".env")
-DEFAULT_SITE = "frontend"
+DEFAULT_SITE = os.environ.get("DEFAULT_SITE", "frontend")
+MCP_PORT = int(os.environ.get("MCP_PORT", "8100"))
 
 ALLOWED_BENCH_COMMANDS = {
     "migrate", "clear-cache", "clear-website-cache", "build",
@@ -57,10 +58,11 @@ def load_env() -> dict:
 
 
 _env = load_env()
-ERPNEXT_PORT = _env.get("ERPNEXT_PORT", "8080")
-ADMIN_PASSWORD = _env.get("ADMIN_PASSWORD", "admin")
-DB_PASSWORD = _env.get("DB_PASSWORD", "admin")
-BASE_URL = f"http://localhost:{ERPNEXT_PORT}"
+ERPNEXT_PORT = os.environ.get("ERPNEXT_PORT") or _env.get("ERPNEXT_PORT", "8080")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or _env.get("ADMIN_PASSWORD", "admin")
+DB_PASSWORD = os.environ.get("DB_PASSWORD") or _env.get("DB_PASSWORD", "admin")
+ERPNEXT_HOST = os.environ.get("ERPNEXT_HOST", "localhost")
+BASE_URL = f"http://{ERPNEXT_HOST}:{ERPNEXT_PORT}"
 
 # ---------------------------------------------------------------------------
 # Frappe HTTP Client
@@ -464,5 +466,10 @@ def manage_services(action: str) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    log.info(f"Starting ERPNext MCP server (port={ERPNEXT_PORT}, site={DEFAULT_SITE})")
-    mcp.run(transport="stdio")
+    transport = os.environ.get("MCP_TRANSPORT", "sse")
+    if transport == "stdio":
+        log.info(f"Starting ERPNext MCP server (stdio, site={DEFAULT_SITE})")
+        mcp.run(transport="stdio")
+    else:
+        log.info(f"Starting ERPNext MCP server (SSE, port={MCP_PORT}, site={DEFAULT_SITE})")
+        mcp.run(transport="sse", host="0.0.0.0", port=MCP_PORT)

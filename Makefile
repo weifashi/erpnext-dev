@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -euo pipefail -c
-.PHONY: build rebuild install create-site add-site update uninstall backup restore up down status logs clean-cache help
+.PHONY: build rebuild install create-site add-site update uninstall backup restore up down status logs clean-cache mcp mcp-install help
 
 # ============================================================
 #  ERPNext Docker Compose 一键部署
@@ -55,6 +55,8 @@ help: ## 显示帮助信息
 	@echo "  make add-site SITE=erp2.example.com"
 	@echo "  make backup SITE=erp2.example.com"
 	@echo "  make restore SITE=erp2.example.com FILE=backups/xxx.sql.gz"
+	@echo "  make mcp                              # 启动 MCP 服务 (端口 8100)"
+	@echo "  make mcp MCP_PORT=9090                # 指定 MCP 端口"
 	@echo ""
 
 # ============================================================
@@ -711,3 +713,22 @@ _generate-env:
 	NODE_VERSION=$(_NODE_VERSION)
 	ENVEOF
 	echo -e "$(GREEN)[INFO]$(NC)  .env 文件已生成" >&2
+
+# ============================================================
+#  MCP Server
+# ============================================================
+MCP_PORT ?= 8100
+
+mcp-install: ## 安装 MCP Server 依赖
+	pip3 install --break-system-packages -q "mcp[cli]" httpx 2>/dev/null || \
+	pip3 install -q "mcp[cli]" httpx
+	echo -e "$(GREEN)[INFO]$(NC)  MCP 依赖安装完成"
+
+mcp: ## 启动 MCP Server (SSE 模式, 端口 8100)
+	@if ! python3 -c "import mcp" 2>/dev/null; then \
+		echo -e "$(YELLOW)[WARN]$(NC)  MCP 依赖未安装，正在安装..." >&2; \
+		$(MAKE) mcp-install; \
+	fi
+	echo -e "$(GREEN)[INFO]$(NC)  启动 ERPNext MCP Server (端口 $(MCP_PORT))..."
+	echo -e "$(GREEN)[INFO]$(NC)  SSE 连接地址: http://0.0.0.0:$(MCP_PORT)/sse"
+	MCP_PORT=$(MCP_PORT) python3 $(CURDIR)/erpnext_mcp_server.py
