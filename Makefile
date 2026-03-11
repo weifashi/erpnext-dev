@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -euo pipefail -c
-.PHONY: build rebuild install update uninstall backup restore status logs help
+.PHONY: build rebuild install update uninstall backup restore status logs clean-cache help
 
 # ============================================================
 #  ERPNext Docker Compose 一键部署
@@ -454,6 +454,25 @@ logs: ## 查看所有服务日志 (make logs 或 make logs SVC=frontend)
 		exit 1
 	fi
 	$(compose) logs -f --tail=100 $(SVC)
+
+# ============================================================
+clean-cache: ## 清理 Docker 构建缓存和悬空镜像
+	@echo -e "$(CYAN)将要清理以下内容:$(NC)"
+	@echo "  1. Docker 构建缓存"
+	@echo "  2. 悬空镜像 (dangling images)"
+	@echo ""
+	@read -rp "$$( echo -e '$(YELLOW)确认清理? [y/N]: $(NC)' )" confirm; \
+	if [[ "$$confirm" != "y" && "$$confirm" != "Y" ]]; then \
+		echo -e "$(GREEN)[INFO]$(NC)  已取消" >&2; \
+		exit 0; \
+	fi; \
+	echo -e "$(GREEN)[INFO]$(NC)  正在清理构建缓存..." >&2; \
+	docker builder prune -af; \
+	echo -e "$(GREEN)[INFO]$(NC)  正在清理悬空镜像..." >&2; \
+	docker image prune -f; \
+	echo ""; \
+	echo -e "$(GREEN)[INFO]$(NC)  清理完成! 当前磁盘占用:" >&2; \
+	docker system df
 
 # ============================================================
 # 内部目标: 生成 .env 文件
