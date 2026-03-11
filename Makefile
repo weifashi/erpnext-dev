@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -euo pipefail -c
-.PHONY: build install update uninstall backup restore status logs help
+.PHONY: build rebuild install update uninstall backup restore status logs help
 
 # ============================================================
 #  ERPNext Docker Compose 一键部署
@@ -111,6 +111,18 @@ build: ## 构建自定义镜像 (含 ERPNext + HRMS)
 	echo -e "$(GREEN)[INFO]$(NC)  镜像构建完成: $${img_name}:$${img_tag}" >&2
 
 # ============================================================
+rebuild: ## 强制重建镜像 (删除旧镜像 + 重新构建)
+	@if [ -f "$(ENV_FILE)" ]; then
+		set -a; source "$(ENV_FILE)"; set +a
+	fi
+	img_name="$${ERPNEXT_IMAGE:-$(IMAGE_NAME)}"
+	img_tag="$${ERPNEXT_IMAGE_TAG:-$(IMAGE_TAG)}"
+	echo -e "$(GREEN)[INFO]$(NC)  删除旧镜像 $${img_name}:$${img_tag}..." >&2
+	docker rmi "$${img_name}:$${img_tag}" 2>/dev/null || true
+	rm -rf frappe_docker
+	$(MAKE) build
+
+# ============================================================
 install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	@# 加载已有 .env 作为默认值
 	port="$(PORT)"
@@ -136,6 +148,22 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	if ! docker image inspect "$${img_name}:$${img_tag}" &>/dev/null; then
 		echo -e "$(YELLOW)[WARN]$(NC)  未找到镜像 $${img_name}:$${img_tag}，先执行构建..." >&2
 		$(MAKE) build
+	fi
+
+	# 检查是否已有残留数据卷（站点已存在），如果有则提示
+	site_exists=$$(docker volume ls -q --filter "name=$(PROJECT)_sites" 2>/dev/null)
+	if [ -n "$$site_exists" ]; then
+		echo -e "$(YELLOW)[WARN]$(NC)  检测到已有数据卷，站点可能已存在" >&2
+		read -rp "$$( echo -e '$(YELLOW)是否清除旧数据重新安装? [y/N]: $(NC)' )" clean
+		if [[ "$$clean" == "y" || "$$clean" == "Y" ]]; then
+			echo -e "$(GREEN)[INFO]$(NC)  正在清除旧数据..." >&2
+			$(compose) down -v --remove-orphans 2>/dev/null || true
+		else
+			echo -e "$(GREEN)[INFO]$(NC)  保留已有数据，跳过站点创建" >&2
+			$(compose) up -d backend db redis-cache redis-queue frontend websocket queue-long queue-short scheduler
+			echo -e "$(GREEN)[INFO]$(NC)  服务已启动" >&2
+			exit 0
+		fi
 	fi
 
 	# 自动检测可用端口
