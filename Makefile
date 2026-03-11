@@ -425,6 +425,19 @@ restore: ## 恢复备份 (make restore FILE=backups/xxx.sql.gz)
 	echo -e "$(GREEN)[INFO]$(NC)  正在恢复数据库..." >&2
 	$(compose) exec -T backend $$restore_cmd
 
+	# 恢复后自动修复环境
+	echo -e "$(GREEN)[INFO]$(NC)  正在修复运行环境..." >&2
+	$(compose) exec -T backend bash -c '\
+		/home/frappe/frappe-bench/env/bin/pip install "setuptools<81" -q 2>/dev/null; \
+		installed=$$(bench --site $(SITE_NAME) list-apps 2>/dev/null | tail -n +2 | tr -d "\r"); \
+		for app in $$(ls apps/ 2>/dev/null); do \
+			if [ "$$app" != "frappe" ] && ! echo "$$installed" | grep -q "$$app"; then \
+				echo "  安装缺失的应用: $$app"; \
+				bench --site $(SITE_NAME) install-app "$$app" 2>/dev/null || true; \
+			fi; \
+		done \
+	'
+
 	echo -e "$(GREEN)[INFO]$(NC)  正在执行数据库迁移..." >&2
 	$(compose) exec -T backend bench --site $(SITE_NAME) migrate
 

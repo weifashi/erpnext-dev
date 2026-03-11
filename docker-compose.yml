@@ -77,6 +77,12 @@ services:
         echo "sites/common_site_config.json found";
         /home/frappe/frappe-bench/env/bin/pip install "setuptools<81" || true;
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD:-admin} --db-root-username=root --db-root-password=${DB_PASSWORD:-admin} --install-app erpnext --set-default frontend;
+        for app in $(ls apps/ 2>/dev/null); do
+          if [ "$$app" != "frappe" ] && [ "$$app" != "erpnext" ]; then
+            echo "Installing $$app...";
+            bench --site frontend install-app "$$app" || true;
+          fi;
+        done;
 
   db:
     image: mariadb:10.6
