@@ -365,8 +365,10 @@ add-site: ## 添加新站点 (make add-site SITE=erp.example.com)
 			--db-root-username=root \
 			--db-root-password='"$$db_pw"' \
 			--install-app erpnext \
-			--install-app hrms \
-			'"$$site_name"''
+			'"$$site_name"' && \
+		if [ -d /home/frappe/frappe-bench/apps/hrms ]; then \
+			bench --site '"$$site_name"' install-app hrms; \
+		fi'
 
 	host_ip=$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo "localhost")
 	port="$${ERPNEXT_PORT:-8080}"
