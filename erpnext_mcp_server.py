@@ -4,12 +4,16 @@
 import json
 import logging
 import os
+import secrets
 import subprocess
 import sys
 from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 # ---------------------------------------------------------------------------
 # Logging (stderr only, never stdout - required for stdio transport)
@@ -63,6 +67,35 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or _env.get("ADMIN_PASSWORD", 
 DB_PASSWORD = os.environ.get("DB_PASSWORD") or _env.get("DB_PASSWORD", "admin")
 ERPNEXT_HOST = os.environ.get("ERPNEXT_HOST", "localhost")
 BASE_URL = f"http://{ERPNEXT_HOST}:{ERPNEXT_PORT}"
+
+# API Key for MCP authentication (auto-generate if not set)
+MCP_API_KEY = os.environ.get("MCP_API_KEY") or _env.get("MCP_API_KEY", "")
+
+
+# ---------------------------------------------------------------------------
+# Auth Middleware (SSE mode only)
+# ---------------------------------------------------------------------------
+
+class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
+    """Verify Bearer token in Authorization header."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip auth for health endpoint
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        if not MCP_API_KEY:
+            return await call_next(request)
+
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return JSONResponse({"error": "Missing Authorization: Bearer <key>"}, status_code=401)
+
+        token = auth[7:]
+        if not secrets.compare_digest(token, MCP_API_KEY):
+            return JSONResponse({"error": "Invalid API key"}, status_code=403)
+
+        return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # Frappe HTTP Client
@@ -471,5 +504,32 @@ if __name__ == "__main__":
         log.info(f"Starting ERPNext MCP server (stdio, site={DEFAULT_SITE})")
         mcp.run(transport="stdio")
     else:
+        import anyio
+        import uvicorn
+
+        # Auto-generate API key if not configured
+        if not MCP_API_KEY:
+            generated_key = secrets.token_urlsafe(32)
+            # Patch module-level var for middleware
+            sys.modules[__name__].__dict__["MCP_API_KEY"] = generated_key
+            log.warning("No MCP_API_KEY configured, auto-generated:")
+            log.warning(f"  MCP_API_KEY={generated_key}")
+            log.warning("  Add to .env or environment to persist")
+            key_display = generated_key
+        else:
+            key_display = MCP_API_KEY[:8] + "..."
+
         log.info(f"Starting ERPNext MCP server (SSE, port={MCP_PORT}, site={DEFAULT_SITE})")
-        mcp.run(transport="sse")
+        log.info(f"API Key: {key_display}")
+        log.info(f"Connect: http://0.0.0.0:{MCP_PORT}/sse")
+
+        # Build SSE app with auth middleware
+        app = mcp.sse_app()
+        app.add_middleware(ApiKeyAuthMiddleware)
+
+        async def serve():
+            config = uvicorn.Config(app, host="0.0.0.0", port=MCP_PORT, log_level="info")
+            server = uvicorn.Server(config)
+            await server.serve()
+
+        anyio.run(serve)

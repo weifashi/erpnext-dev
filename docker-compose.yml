@@ -236,6 +236,7 @@ services:
       ERPNEXT_PORT: "8080"
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       DB_PASSWORD: ${DB_PASSWORD:-admin}
+      MCP_API_KEY: ${MCP_API_KEY:-}
     ports:
       - "${MCP_PORT:-8100}:8100"
 
