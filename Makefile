@@ -10,12 +10,12 @@ SHELL := /bin/bash
 
 # ---------- 默认参数 ----------
 PORT             ?= 8080
-PASSWORD         ?= admin
+PASSWORD         ?=
 FRAPPE_VERSION   ?= v15.73.0
 PYTHON_VERSION   ?= 3.11.9
 NODE_VERSION     ?= 18.20.2
-IMAGE_NAME       ?= erpnext-custom
-IMAGE_TAG        ?= latest
+IMAGE_NAME       ?= frappe/erpnext
+IMAGE_TAG        ?= v15.70.0
 PROJECT          ?= erpnext
 FILE             ?=
 NO_CACHE         ?=
@@ -86,7 +86,7 @@ build: ## 构建自定义镜像 (含 ERPNext + HRMS)
 	# 生成 .env（如果不存在）
 	if [ ! -f "$(ENV_FILE)" ]; then
 		$(MAKE) _generate-env \
-			_PORT=$(PORT) _PASSWORD=$(PASSWORD) \
+			_PORT=$(PORT) _PASSWORD="$(PASSWORD)" _DB_PASSWORD="$(PASSWORD)" \
 			_FRAPPE_VERSION="$$frappe_ver" _IMAGE_NAME="$$img_name" _IMAGE_TAG="$$img_tag" \
 			_PYTHON_VERSION="$$py_ver" _NODE_VERSION="$$node_ver"
 	fi
@@ -128,7 +128,8 @@ rebuild: ## 强制重建镜像 (删除旧镜像 + 重新构建)
 install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	@# 加载已有 .env 作为默认值
 	port="$(PORT)"
-	password="$(PASSWORD)"
+	admin_pw="$(PASSWORD)"
+	db_pw="$(PASSWORD)"
 	frappe_ver="$(FRAPPE_VERSION)"
 	img_name="$(IMAGE_NAME)"
 	img_tag="$(IMAGE_TAG)"
@@ -138,7 +139,8 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	if [ -f "$(ENV_FILE)" ]; then
 		set -a; source "$(ENV_FILE)"; set +a
 		port="$${ERPNEXT_PORT:-$$port}"
-		password="$${ADMIN_PASSWORD:-$$password}"
+		admin_pw="$${ADMIN_PASSWORD:-$$admin_pw}"
+		db_pw="$${DB_PASSWORD:-$$db_pw}"
 		frappe_ver="$${FRAPPE_VERSION:-$$frappe_ver}"
 		img_name="$${ERPNEXT_IMAGE:-$$img_name}"
 		img_tag="$${ERPNEXT_IMAGE_TAG:-$$img_tag}"
@@ -146,10 +148,15 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 		node_ver="$${NODE_VERSION:-$$node_ver}"
 	fi
 
-	# 检查镜像，未构建则先构建
+	# 检查镜像，不存在则拉取或构建
 	if ! docker image inspect "$${img_name}:$${img_tag}" &>/dev/null; then
-		echo -e "$(YELLOW)[WARN]$(NC)  未找到镜像 $${img_name}:$${img_tag}，先执行构建..." >&2
-		$(MAKE) build
+		if echo "$${img_name}" | grep -q '/'; then
+			echo -e "$(GREEN)[INFO]$(NC)  正在拉取官方镜像 $${img_name}:$${img_tag}..." >&2
+			docker pull "$${img_name}:$${img_tag}"
+		else
+			echo -e "$(YELLOW)[WARN]$(NC)  未找到镜像 $${img_name}:$${img_tag}，先执行构建..." >&2
+			$(MAKE) build
+		fi
 	fi
 
 	# 清理所有残留资源（容器、数据卷、网络）
@@ -173,9 +180,13 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 
 	# 生成 .env
 	$(MAKE) _generate-env \
-		_PORT="$$port" _PASSWORD="$$password" \
+		_PORT="$$port" _PASSWORD="$$admin_pw" _DB_PASSWORD="$$db_pw" \
 		_FRAPPE_VERSION="$$frappe_ver" _IMAGE_NAME="$$img_name" _IMAGE_TAG="$$img_tag" \
 		_PYTHON_VERSION="$$py_ver" _NODE_VERSION="$$node_ver"
+	# 重新加载 .env（可能包含新生成的随机密码）
+	set -a; source "$(ENV_FILE)"; set +a
+	admin_pw="$$ADMIN_PASSWORD"
+	db_pw="$$DB_PASSWORD"
 
 	# 启动基础服务
 	echo -e "$(GREEN)[INFO]$(NC)  正在启动基础服务 (db, redis, backend, frontend...)..." >&2
@@ -184,7 +195,7 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	# 等待 DB 就绪
 	echo -e "$(GREEN)[INFO]$(NC)  等待数据库就绪..." >&2
 	retries=0
-	until $(compose) exec -T db mysqladmin ping -h localhost --password="$$password" --silent 2>/dev/null; do
+	until $(compose) exec -T db mysqladmin ping -h localhost --password="$$db_pw" --silent 2>/dev/null; do
 		retries=$$((retries+1))
 		if [ $$retries -ge 60 ]; then
 			echo -e "$(RED)[ERROR]$(NC) 数据库启动超时" >&2
@@ -241,7 +252,7 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	echo -e "$(CYAN)====================================================$(NC)"
 	echo -e "  访问地址:  $(GREEN)http://$${host_ip}:$${port}$(NC)"
 	echo -e "  用户名:    $(GREEN)Administrator$(NC)"
-	echo -e "  密码:      $(GREEN)$${password}$(NC)"
+	echo -e "  密码:      $(GREEN)$${admin_pw}$(NC)"
 	echo -e "  Frappe:    $(GREEN)$${frappe_ver}$(NC)"
 	echo -e "  Apps:      $(GREEN)$$(jq -r '.[] | "\(.url | split("/") | last):\(.branch)"' $(APPS_JSON) 2>/dev/null | tr '\n' ' ')$(NC)"
 	echo -e "$(CYAN)====================================================$(NC)"
@@ -448,17 +459,28 @@ logs: ## 查看所有服务日志 (make logs 或 make logs SVC=frontend)
 # 内部目标: 生成 .env 文件
 # ============================================================
 _generate-env:
-	@cat > "$(ENV_FILE)" <<-ENVEOF
+	@# 生成随机密码（如果未指定）
+	admin_pw="$(_PASSWORD)"
+	db_pw="$(_DB_PASSWORD)"
+	if [ -z "$$admin_pw" ]; then
+		admin_pw=$$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 16)
+		echo -e "$(GREEN)[INFO]$(NC)  已生成随机管理员密码" >&2
+	fi
+	if [ -z "$$db_pw" ]; then
+		db_pw=$$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 16)
+		echo -e "$(GREEN)[INFO]$(NC)  已生成随机数据库密码" >&2
+	fi
+	cat > "$(ENV_FILE)" <<-ENVEOF
 	# ERPNext 部署配置 (自动生成)
 
 	# 访问端口
 	ERPNEXT_PORT=$(_PORT)
 
 	# 管理员密码 (ERPNext 后台登录)
-	ADMIN_PASSWORD=$(_PASSWORD)
+	ADMIN_PASSWORD=$$admin_pw
 
 	# 数据库 root 密码
-	DB_PASSWORD=$(_PASSWORD)
+	DB_PASSWORD=$$db_pw
 
 	# Frappe 框架版本
 	FRAPPE_VERSION=$(_FRAPPE_VERSION)

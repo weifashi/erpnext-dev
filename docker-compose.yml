@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
@@ -16,7 +16,7 @@ services:
       MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
 
   configurator:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
@@ -45,7 +45,7 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   create-site:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
@@ -76,7 +76,7 @@ services:
         done;
         echo "sites/common_site_config.json found";
         /home/frappe/frappe-bench/env/bin/pip install "setuptools<81" || true;
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD:-admin} --db-root-username=root --db-root-password=${DB_PASSWORD:-admin} --install-app erpnext --install-app hrms --set-default frontend;
+        bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD:-admin} --db-root-username=root --db-root-password=${DB_PASSWORD:-admin} --install-app erpnext --set-default frontend;
 
   db:
     image: mariadb:10.6
@@ -101,7 +101,7 @@ services:
       - db-data:/var/lib/mysql
 
   frontend:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     depends_on:
@@ -127,7 +127,7 @@ services:
       - "${ERPNEXT_PORT:-8080}:8080"
 
   queue-long:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
@@ -146,7 +146,7 @@ services:
       FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
 
   queue-short:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
@@ -183,7 +183,7 @@ services:
         condition: on-failure
 
   scheduler:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
@@ -197,7 +197,7 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   websocket:
-    image: ${ERPNEXT_IMAGE:-erpnext-custom}:${ERPNEXT_IMAGE_TAG:-latest}
+    image: ${ERPNEXT_IMAGE:-frappe/erpnext}:${ERPNEXT_IMAGE_TAG:-v15.70.0}
     networks:
       - frappe_network
     deploy:
