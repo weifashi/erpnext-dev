@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -euo pipefail -c
-.PHONY: build rebuild install update uninstall backup restore status logs clean-cache help
+.PHONY: build rebuild install update uninstall backup restore up down status logs clean-cache help
 
 # ============================================================
 #  ERPNext Docker Compose 一键部署
@@ -437,6 +437,24 @@ restore: ## 恢复备份 (make restore FILE=backups/xxx.sql.gz)
 
 	echo ""
 	echo -e "$(GREEN)[INFO]$(NC)  备份恢复完成!" >&2
+
+# ============================================================
+up: ## 启动所有服务
+	@if [ ! -f "$(ENV_FILE)" ]; then
+		echo -e "$(RED)[ERROR]$(NC) 未找到 .env 文件，请先运行 make install" >&2
+		exit 1
+	fi
+	$(compose) up -d backend db redis-cache redis-queue frontend websocket queue-long queue-short scheduler
+	echo -e "$(GREEN)[INFO]$(NC)  所有服务已启动" >&2
+
+# ============================================================
+down: ## 停止所有服务 (保留数据)
+	@if [ ! -f "$(ENV_FILE)" ]; then
+		echo -e "$(RED)[ERROR]$(NC) 未找到 .env 文件" >&2
+		exit 1
+	fi
+	$(compose) down
+	echo -e "$(GREEN)[INFO]$(NC)  所有服务已停止" >&2
 
 # ============================================================
 status: ## 查看服务状态
