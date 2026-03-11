@@ -151,7 +151,7 @@ def bench_exec(site: str, *bench_args: str, timeout: int = 120) -> str:
 # ---------------------------------------------------------------------------
 # MCP Server
 # ---------------------------------------------------------------------------
-mcp = FastMCP("erpnext")
+mcp = FastMCP("erpnext", host="0.0.0.0", port=MCP_PORT)
 
 # ========================== API Operations ==========================
 
@@ -472,4 +472,4 @@ if __name__ == "__main__":
         mcp.run(transport="stdio")
     else:
         log.info(f"Starting ERPNext MCP server (SSE, port={MCP_PORT}, site={DEFAULT_SITE})")
-        mcp.run(transport="sse", host="0.0.0.0", port=MCP_PORT)
+        mcp.run(transport="sse")
