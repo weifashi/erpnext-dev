@@ -1,3 +1,7 @@
 frappe_docker/
 .env
 backups/
+
+# Claude Code (只提交共享配置，忽略本地配置)
+.claude/settings.local.json
+.claude/projects/
