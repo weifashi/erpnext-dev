@@ -136,8 +136,11 @@ do_build() {
         exit 1
     fi
     if [ ! -f "$CONTAINERFILE" ]; then
-        log_error "未找到 Containerfile，请先克隆 frappe_docker"
-        exit 1
+        log_info "未找到 frappe_docker，正在克隆..."
+        git clone --depth 1 \
+            https://github.com/frappe/frappe_docker.git \
+            "$SCRIPT_DIR/frappe_docker"
+        log_info "frappe_docker 克隆完成"
     fi
 
     # 生成 .env（如果不存在）
