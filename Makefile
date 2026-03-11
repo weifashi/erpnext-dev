@@ -720,26 +720,26 @@ _generate-env:
 MCP_PORT ?= 8100
 
 mcp-install: ## 安装 MCP Server 依赖
-	# 确保 python3 和 pip3 可用
+	# 确保 python3 可用
 	if ! command -v python3 &>/dev/null; then
 		echo -e "$(YELLOW)[WARN]$(NC)  python3 未找到，正在安装..." >&2
 		if command -v apt-get &>/dev/null; then
-			sudo apt-get update -qq && sudo apt-get install -y -qq python3 python3-pip python3-venv >/dev/null 2>&1
+			sudo apt-get update -qq && sudo apt-get install -y -qq python3 python3-venv >/dev/null 2>&1
 		elif command -v yum &>/dev/null; then
-			sudo yum install -y -q python3 python3-pip >/dev/null 2>&1
+			sudo yum install -y -q python3 >/dev/null 2>&1
 		else
 			echo -e "$(RED)[ERROR]$(NC) 无法自动安装 python3，请手动安装" >&2
 			exit 1
 		fi
 	fi
-	if ! command -v pip3 &>/dev/null; then
-		echo -e "$(YELLOW)[WARN]$(NC)  pip3 未找到，正在安装..." >&2
-		if command -v apt-get &>/dev/null; then
-			sudo apt-get install -y -qq python3-pip >/dev/null 2>&1
-		fi
+	# 确保 pip 可用 (优先 python3 -m pip，回退 get-pip.py)
+	if ! python3 -m pip --version &>/dev/null; then
+		echo -e "$(YELLOW)[WARN]$(NC)  pip 未找到，正在安装..." >&2
+		curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages -q 2>/dev/null || \
+		curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 - -q
 	fi
-	pip3 install --break-system-packages -q "mcp[cli]" httpx 2>/dev/null || \
-	pip3 install -q "mcp[cli]" httpx
+	python3 -m pip install --break-system-packages -q "mcp[cli]" httpx 2>/dev/null || \
+	python3 -m pip install -q "mcp[cli]" httpx
 	echo -e "$(GREEN)[INFO]$(NC)  MCP 依赖安装完成"
 
 mcp: ## 启动 MCP Server (SSE 模式, 端口 8100)
