@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -euo pipefail -c
-.PHONY: build rebuild install update uninstall backup restore up down status logs clean-cache help
+.PHONY: build rebuild install create-site update uninstall backup restore up down status logs clean-cache help
 
 # ============================================================
 #  ERPNext Docker Compose 一键部署
@@ -264,6 +264,78 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 	echo -e "    恢复备份:  $(YELLOW)make restore$(NC)"
 	echo -e "    卸载清理:  $(YELLOW)make uninstall$(NC)"
 	echo -e "$(CYAN)====================================================$(NC)"
+	echo ""
+
+# ============================================================
+create-site: ## 重新创建站点 (删除旧站点数据，重新初始化)
+	@if [ ! -f "$(ENV_FILE)" ]; then
+		echo -e "$(RED)[ERROR]$(NC) 未找到 .env 文件，请先运行 make install" >&2
+		exit 1
+	fi
+	set -a; source "$(ENV_FILE)"; set +a
+	admin_pw="$${ADMIN_PASSWORD:-admin}"
+	db_pw="$${DB_PASSWORD:-admin}"
+
+	# 确认操作
+	read -rp "$$( echo -e '$(RED)将删除现有站点数据并重新创建，确认? [y/N]: $(NC)' )" confirm
+	if [[ "$$confirm" != "y" && "$$confirm" != "Y" ]]; then
+		echo -e "$(GREEN)[INFO]$(NC)  已取消" >&2
+		exit 0
+	fi
+
+	# 删除旧的 create-site 容器
+	docker rm -f "$(PROJECT)-create-site-1" 2>/dev/null || true
+	docker rm -f "$(PROJECT)-configurator-1" 2>/dev/null || true
+
+	# 删除旧站点数据
+	echo -e "$(GREEN)[INFO]$(NC)  正在清除旧站点数据..." >&2
+	$(compose) exec -T backend bash -c 'rm -rf /home/frappe/frappe-bench/sites/$(SITE_NAME)'
+
+	# 运行 configurator
+	echo -e "$(GREEN)[INFO]$(NC)  正在初始化配置..." >&2
+	$(compose) up -d configurator
+	$(compose) wait configurator 2>/dev/null || sleep 10
+
+	# 创建站点
+	echo -e "$(GREEN)[INFO]$(NC)  正在创建站点 (这可能需要 3-5 分钟)..." >&2
+	$(compose) up -d create-site
+
+	# 等待站点创建完成
+	timeout=600
+	elapsed=0
+	while [ $$elapsed -lt $$timeout ]; do
+		cstatus=$$(docker inspect --format='{{.State.Status}}' "$(PROJECT)-create-site-1" 2>/dev/null || echo "running")
+		if [ "$$cstatus" = "exited" ]; then
+			exit_code=$$(docker inspect --format='{{.State.ExitCode}}' "$(PROJECT)-create-site-1" 2>/dev/null || echo "1")
+			if [ "$$exit_code" = "0" ]; then
+				echo -e "$(GREEN)[INFO]$(NC)  站点创建成功!" >&2
+				break
+			else
+				echo -e "$(RED)[ERROR]$(NC) 站点创建失败，查看日志:" >&2
+				$(compose) logs create-site | tail -20
+				exit 1
+			fi
+		fi
+		sleep 5
+		elapsed=$$((elapsed+5))
+		if (( elapsed % 30 == 0 )); then
+			echo -e "$(GREEN)[INFO]$(NC)    已等待 $${elapsed}s / $${timeout}s ..." >&2
+		fi
+	done
+
+	if [ $$elapsed -ge $$timeout ]; then
+		echo -e "$(RED)[ERROR]$(NC) 站点创建超时 ($${timeout}s)" >&2
+		$(compose) logs create-site | tail -20
+		exit 1
+	fi
+
+	host_ip=$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo "localhost")
+	port="$${ERPNEXT_PORT:-8080}"
+	echo ""
+	echo -e "$(GREEN)[INFO]$(NC)  站点创建完成!" >&2
+	echo -e "  访问地址:  $(GREEN)http://$${host_ip}:$${port}$(NC)"
+	echo -e "  用户名:    $(GREEN)Administrator$(NC)"
+	echo -e "  密码:      $(GREEN)$${admin_pw}$(NC)"
 	echo ""
 
 # ============================================================
