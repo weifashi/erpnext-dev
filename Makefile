@@ -76,6 +76,12 @@ build: ## 构建自定义镜像 (含 ERPNext + HRMS)
 		echo -e "$(GREEN)[INFO]$(NC)  frappe_docker 克隆完成" >&2
 	fi
 
+	# 修补 Containerfile: 确保 setuptools 可用 (pkg_resources)
+	if ! grep -q 'pip3 install setuptools' "$(CONTAINERFILE)"; then
+		sed -i 's|pip3 install frappe-bench|pip3 install setuptools frappe-bench|' "$(CONTAINERFILE)"
+		echo -e "$(GREEN)[INFO]$(NC)  已修补 Containerfile (添加 setuptools)" >&2
+	fi
+
 	# 生成 .env（如果不存在）
 	if [ ! -f "$(ENV_FILE)" ]; then
 		$(MAKE) _generate-env \
