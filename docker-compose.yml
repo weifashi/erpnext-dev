@@ -75,6 +75,7 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
+        /home/frappe/frappe-bench/env/bin/pip install "setuptools<81" || true;
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD:-admin} --db-root-username=root --db-root-password=${DB_PASSWORD:-admin} --install-app erpnext --install-app hrms --set-default frontend;
 
   db:

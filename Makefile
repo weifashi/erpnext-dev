@@ -18,6 +18,7 @@ IMAGE_NAME       ?= erpnext-custom
 IMAGE_TAG        ?= latest
 PROJECT          ?= erpnext
 FILE             ?=
+NO_CACHE         ?=
 
 # ---------- 内部变量 ----------
 COMPOSE_FILE    := docker-compose.yml
@@ -100,6 +101,7 @@ build: ## 构建自定义镜像 (含 ERPNext + HRMS)
 	echo ""
 
 	docker build \
+		$${NO_CACHE:+--no-cache} \
 		--build-arg APPS_JSON_BASE64="$$apps_json_base64" \
 		--build-arg FRAPPE_BRANCH="$$frappe_ver" \
 		--build-arg PYTHON_VERSION="$$py_ver" \
@@ -120,7 +122,7 @@ rebuild: ## 强制重建镜像 (删除旧镜像 + 重新构建)
 	echo -e "$(GREEN)[INFO]$(NC)  删除旧镜像 $${img_name}:$${img_tag}..." >&2
 	docker rmi "$${img_name}:$${img_tag}" 2>/dev/null || true
 	rm -rf frappe_docker
-	$(MAKE) build
+	$(MAKE) build NO_CACHE=1
 
 # ============================================================
 install: ## 构建镜像并部署 ERPNext (自动生成 .env)
@@ -150,21 +152,16 @@ install: ## 构建镜像并部署 ERPNext (自动生成 .env)
 		$(MAKE) build
 	fi
 
-	# 检查是否已有残留数据卷（站点已存在），如果有则提示
-	site_exists=$$(docker volume ls -q --filter "name=$(PROJECT)_sites" 2>/dev/null)
-	if [ -n "$$site_exists" ]; then
-		echo -e "$(YELLOW)[WARN]$(NC)  检测到已有数据卷，站点可能已存在" >&2
-		read -rp "$$( echo -e '$(YELLOW)是否清除旧数据重新安装? [y/N]: $(NC)' )" clean
-		if [[ "$$clean" == "y" || "$$clean" == "Y" ]]; then
-			echo -e "$(GREEN)[INFO]$(NC)  正在清除旧数据..." >&2
-			$(compose) down -v --remove-orphans 2>/dev/null || true
-		else
-			echo -e "$(GREEN)[INFO]$(NC)  保留已有数据，跳过站点创建" >&2
-			$(compose) up -d backend db redis-cache redis-queue frontend websocket queue-long queue-short scheduler
-			echo -e "$(GREEN)[INFO]$(NC)  服务已启动" >&2
-			exit 0
-		fi
+	# 清理所有残留资源（容器、数据卷、网络）
+	existing=$$(docker ps -aq --filter "name=$(PROJECT)-" 2>/dev/null)
+	if [ -n "$$existing" ]; then
+		echo -e "$(YELLOW)[WARN]$(NC)  检测到残留容器，正在清除..." >&2
+		docker rm -f $$existing 2>/dev/null || true
 	fi
+	for vol in $$(docker volume ls -q --filter "name=$(PROJECT)_" 2>/dev/null); do
+		docker volume rm "$$vol" 2>/dev/null || true
+	done
+	docker network rm $(PROJECT)_frappe_network 2>/dev/null || true
 
 	# 自动检测可用端口
 	while ss -tlnp 2>/dev/null | grep -q ":$${port} " || \
