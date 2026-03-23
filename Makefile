@@ -11,11 +11,11 @@ SHELL := /bin/bash
 # ---------- 默认参数 ----------
 PORT             ?= 8080
 PASSWORD         ?=
-FRAPPE_VERSION   ?= v15.73.0
+FRAPPE_VERSION   ?= v15.98.1
 PYTHON_VERSION   ?= 3.11.9
 NODE_VERSION     ?= 18.20.2
 IMAGE_NAME       ?= frappe/erpnext
-IMAGE_TAG        ?= v15.70.0
+IMAGE_TAG        ?= v15.95.2
 PROJECT          ?= erpnext
 FILE             ?=
 NO_CACHE         ?=

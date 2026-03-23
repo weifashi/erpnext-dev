@@ -4,10 +4,10 @@
 基于 Docker Compose 的 ERPNext 生产环境一键部署方案。
 
 ## 版本信息
-- ERPNext: v15.70.0
-- Frappe: v15.73.0
-- HRMS: v15.49.2 (仅自定义构建模式)
-- 默认镜像: `frappe/erpnext:v15.70.0` (官方预构建)
+- ERPNext: v15.95.2（与生产线一致；tag 指向 commit `621558a30c450fcdc7630c34225ff67890c1981d`）
+- Frappe: v15.98.1（与官方 `frappe/erpnext:v15.95.2` 镜像内版本一致，供 `make build` 使用）
+- HRMS: v15.58.4 (仅自定义构建模式)
+- 默认镜像: `frappe/erpnext:v15.95.2` (官方预构建)
 
 ## 项目结构
 ```
@@ -44,7 +44,7 @@ make build                # 自定义构建镜像 (含 HRMS)
 - `setuptools<81` 用于兼容 `pkg_resources` (ERPNext v15 依赖)
 
 ## 两种部署模式
-1. **官方镜像** (默认): `frappe/erpnext:v15.70.0`，快速拉取部署
+1. **官方镜像** (默认): `frappe/erpnext:v15.95.2`，快速拉取部署
 2. **自定义构建**: `make build`，支持 HRMS 等额外 app，需要从源码构建
 
 ## 注意事项
