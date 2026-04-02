@@ -85,6 +85,8 @@ services:
     image: mariadb:10.6
     networks:
       - frappe_network
+    ports:
+      - "12306:3306"
     healthcheck:
       test: mysqladmin ping -h localhost --password=${DB_PASSWORD:-admin}
       interval: 1s
